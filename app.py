@@ -9,61 +9,48 @@ df = pd.read_csv('data/MTA_Monthly_2008.csv')
 df['Month'] = pd.to_datetime(df['Month'])
 df['Year'] = df['Month'].dt.year
 
-# Precompute static plots
-total_by_agency = px.bar(
-    df.groupby('Agency', as_index=False)['Ridership'].sum(),
-    x='Agency',
-    y='Ridership',
-    title='🏙️ Total Ridership by Agency',
-    color='Agency'
-)
+# Initialize app
+app = dash.Dash(__name__)
+app.title = 'NYC MTA Ridership'
 
-monthly_total = px.line(
-    df.groupby('Month', as_index=False)['Ridership'].sum(),
-    x='Month',
-    y='Ridership',
-    title='🗓️ Total Monthly Ridership Across All Agencies'
-)
+# Layout
+app.layout = html.Div([
+    html.H1("📊 NYC MTA Ridership Dashboard"),
 
-# Initialize Dash
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
-app.title = "MTA Ridership Dashboard"
+    html.Label("Select Transit Agency:"),
+    dcc.Dropdown(
+        options=[{'label': agency, 'value': agency} for agency in df['Agency'].unique()],
+        value=df['Agency'].unique()[0],
+        id='agency-dropdown'
+    ),
 
-app.layout = html.Div(style={'fontFamily': 'Arial, sans-serif', 'margin': '40px'}, children=[
+    html.H2("📈 Monthly Ridership for Selected Agency"),
+    dcc.Graph(id='ridership-line'),
 
-    html.H1("🚇 NYC MTA Ridership Dashboard", style={'textAlign': 'center'}),
+    html.H2("📊 Yearly Ridership for Selected Agency"),
+    dcc.Graph(id='yearly-bar'),
 
-    dcc.Tabs(id="tabs", value='tab-agency', children=[
-        dcc.Tab(label='Agency Dashboard', value='tab-agency'),
-        dcc.Tab(label='Aggregate Dashboard', value='tab-aggregate'),
-    ], colors={'primary': '#1f77b4', 'background': '#f7f7f7', 'border': '#d6d6d6'}),
+    html.H2("🏙️ Total Ridership by Agency (All Time)"),
+    dcc.Graph(
+        figure=px.bar(
+            df.groupby('Agency', as_index=False)['Ridership'].sum(),
+            x='Agency',
+            y='Ridership',
+            title='Total Ridership by Agency',
+            color='Agency'
+        )
+    ),
 
-    html.Div(id='tabs-content')
+    html.H2("🗓️ Total Monthly Ridership (All Agencies Combined)"),
+    dcc.Graph(
+        figure=px.line(
+            df.groupby('Month', as_index=False)['Ridership'].sum(),
+            x='Month',
+            y='Ridership',
+            title='Total Monthly Ridership Across All Agencies'
+        )
+    )
 ])
-
-@app.callback(Output('tabs-content', 'children'),
-              Input('tabs', 'value'))
-def render_content(tab):
-    if tab == 'tab-agency':
-        return html.Div([
-            html.Label("Select Transit Agency:", style={'marginTop': '20px'}),
-            dcc.Dropdown(
-                options=[{'label': agency, 'value': agency} for agency in df['Agency'].unique()],
-                value=df['Agency'].unique()[0],
-                id='agency-dropdown',
-                style={'width': '60%', 'marginBottom': '30px'}
-            ),
-
-            dcc.Graph(id='ridership-line'),
-            dcc.Graph(id='yearly-bar'),
-        ])
-    elif tab == 'tab-aggregate':
-        return html.Div([
-            html.Div([
-                dcc.Graph(figure=total_by_agency, style={'width': '48%', 'display': 'inline-block'}),
-                dcc.Graph(figure=monthly_total, style={'width': '48%', 'display': 'inline-block', 'float': 'right'}),
-            ])
-        ])
 
 # Callback for agency-specific plots
 @app.callback(
@@ -71,26 +58,28 @@ def render_content(tab):
      Output('yearly-bar', 'figure')],
     [Input('agency-dropdown', 'value')]
 )
-def update_agency_charts(selected_agency):
+def update_graphs(selected_agency):
     filtered_df = df[df['Agency'] == selected_agency]
 
-    line_fig = px.line(
+    # Monthly line chart
+    fig_line = px.line(
         filtered_df,
         x='Month',
         y='Ridership',
-        title=f'📈 Monthly Ridership: {selected_agency}'
+        title=f'{selected_agency} - Monthly Ridership'
     )
 
-    yearly_df = filtered_df.groupby('Year')['Ridership'].sum().reset_index()
-    bar_fig = px.bar(
-        yearly_df,
+    # Yearly bar chart
+    yearly = filtered_df.groupby('Year')['Ridership'].sum().reset_index()
+    fig_bar = px.bar(
+        yearly,
         x='Year',
         y='Ridership',
-        title=f'📊 Yearly Ridership: {selected_agency}',
-        color='Year'
+        title=f'{selected_agency} - Yearly Ridership'
     )
 
-    return line_fig, bar_fig
+    return fig_line, fig_bar
 
+# Run the Dash app
 if __name__ == '__main__':
     app.run(debug=True)
